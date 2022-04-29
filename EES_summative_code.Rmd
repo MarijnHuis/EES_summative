@@ -1,0 +1,132 @@
+---
+title: "EES_summative_code"
+author: "Marijn Huis"
+date: '2022-04-21'
+output: html_document
+---
+
+Install all packages used in this Rmd file.
+```{r}
+# install.packages("readr")
+# install.packages("skimr")
+# install.packages("tidyverse")
+# install.packages("astsa")
+# install.packages("forecast")
+library(tidyverse)
+library(astsa)
+library(forecast)
+```
+
+
+Read in the data and examine it
+
+```{r}
+# Load the data
+temp <- readr::read_csv("durhamtemp_1901_2019.csv")
+# Rename Av temp to Tavg
+names(temp)[6] <- "Tavg"
+# View(temp)
+# summarize and plot the data
+skimr::skim(temp)
+temp <- as.data.frame(temp)
+# remove NA values
+temp <- na.omit(temp)
+
+#reformat date for plotting and 
+temp$Date = as.Date(temp$Date, "%d/%m/%Y")
+newtemp <- data.frame(Date = temp$Date, Tavg = temp$Tavg)
+
+# save as timeseries
+temp.ts <- ts(newtemp$Tavg, start=c(1901,1,1), frequency=365.25)
+
+# half data set every 2 days
+newtemp2 <- newtemp %>%
+  slice(which(row_number() %% 2 == 1))
+temp.2.ts <- ts(newtemp2$Tavg, start=c(1901,1,1), frequency=365.25/2)
+
+# take average monthly data
+tempMonth <- temp %>%
+  group_by(Year, Month) %>%
+  summarise(Tavg.month = mean(Tavg))
+
+# reformat tempMonth for plotting
+tempMonth$Date <- as.Date(paste(tempMonth$Year, tempMonth$Month, "01", sep = "-"))
+
+# save as timeseries
+temp.month.ts <- ts(tempMonth$Tavg.month, start=c(1901,1,1), frequency = 12)
+```
+
+```{r}
+tempMonth <- data.frame(Date = tempMonth$Date, Tavg.month = tempMonth$Tavg.month)
+tempMonth <- na.omit(tempMonth)
+
+# fit linear regression
+lm.monthly <- lm(tempMonth$Tavg.month ~ tempMonth$Date, tempMonth)
+lm.daily <- lm(newtemp$Tavg ~ newtemp$Date, newtemp)
+
+# plot data
+plot(newtemp, type = "l", 
+     ylab = "Average temperature (°C)", 
+     xlab = "Time", 
+     main = "Durham daily temperature record")
+abline(lm.daily, col = 2)
+
+plot(newtemp, type = "l", xlim = as.Date(c("2018/01/01","2020/01/01")), 
+     ylab = "Average temperature (°C)", 
+     xlab = "Time",
+     main = "Durham daily temperature record")
+abline(lm.daily, col = 2)
+
+plot(tempMonth$Date, tempMonth$Tavg.month, type = "l", 
+     ylab = "Average temperature (°C)", 
+     xlab = "Time",
+     main = "Durham monthly temperature record")
+abline(lm.monthly, col = 2)
+
+plot(tempMonth$Date, tempMonth$Tavg.month, type = "l",
+     xlim = as.Date(c("2018/01/01","2020/01/01")),
+     ylab = "Average temperature (°C)", 
+     xlab = "Time",
+     main = "Durham monthly temperature record")
+abline(lm.monthly, col = 2)
+
+acf2(tempMonth$Tavg.month)
+
+temp_fit_monthly <- sarima(temp.month.ts, 2,1,3)
+
+# forecast 1 year - monthly data
+sarima.for(temp.month.ts, 2,1,3, n.ahead = 12)
+```
+
+```{r}
+# forecast 1 year - 2nd day  daily data half data set
+# TAKES VERY LONG - not used in report
+# temp_fit_2daily <- sarima(temp.2.ts, 2,1,1, 0,1,1, 365.25/2)
+# 
+# sarima.for(temp.2.ts, 2,1,1, 0,1,1, (365.25/2), (365/2))
+```
+
+
+
+```{r}
+# NOT USED IN REPORT
+fit.month <- auto.arima(temp.month.ts)
+plot(forecast(fit.month,h=12), xlim=c(2018,2021), ylim=c(-5,25))
+
+checkresiduals(fit.month)
+
+# fit.daily <- auto.arima(tail(temp.ts, n=12*365.25))
+# plot(forecast(fit.daily,h=365), xlim=c(2018,2021), ylim=c(-5,25))
+# 
+# checkresiduals(fit.daily)
+
+```
+
+```{r}
+stlf(temp.ts, h=365, method="arima") %>%
+  plot(xlim=c(2018,2021),ylim=c(-5,25))
+
+stlf(temp.ts, h=365, method="ets") %>%
+  plot(xlim=c(2018,2021),ylim=c(-5,25))
+```
+
